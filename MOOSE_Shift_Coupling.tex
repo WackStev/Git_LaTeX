@@ -1,0 +1,234 @@
+\documentclass{anstrans}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\title{Shift and MOOSE Coupling: Preliminary Investigations and Results}
+\author{Steven Wacker,$^{*}$ Leslie Kerby$^{\dagger}$}
+
+\institute{
+$^{*}$ Idaho State University, 921 South 8th Avenue, Pocatello, ID, 83209, wackstev@isu.edu
+\and
+$^{\dagger}$Idaho National Laboratory, P.O. Box 1625, Idaho Falls, ID 83415, kerblesl@isu.edu
+}
+
+% Optional disclaimer: remove this command to hide
+%\disclaimer{Notice: this manuscript is a work of fiction. Any resemblance to
+%actual articles, living or dead, is purely coincidental.}
+
+%%%% packages and definitions (optional)
+\usepackage{graphicx} % allows inclusion of graphics
+\usepackage{booktabs} % nice rules (thick lines) for tables
+\usepackage{microtype} % improves typography for PDF
+\usepackage{subfig}
+
+\newcommand{\SN}{S$_N$}
+\renewcommand{\vec}[1]{\bm{#1}} %vector is bold italic
+\newcommand{\vd}{\bm{\cdot}} % slightly bold vector dot
+\newcommand{\grad}{\vec{\nabla}} % gradient
+\newcommand{\ud}{\mathop{}\!\mathrm{d}} % upright derivative symbol
+
+\begin{document}
+	
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introduction}
+  
+%\subsection{Motivation}
+The Office of Nuclear Energy within the Department of Energy (DOE) initiated a program in 2012 to bring Small Modular Reactors (SMR's) on-line by 2025. To accelerate the licensing process, SMR design and production will rely heavily on computational modeling and simulation to aid in design optimization and safety. 
+
+In order to meet the high-performance computing (HPC) needs for the SMR and beyond, the Exascale Computing Project (ECP) was established with the intent of accelerating the development of a capable exascale computing ecosystem composed of applications, software, and hardware. Before this can come to fruition, individual focus groups under the broad canopy of the ECP are working to drive the pre-exascale research and development (R\&D) required to compose the future exascale computing ecosystem.
+
+To address the challenges faced in the simulation and modeling of the SMR, the ExaSMR application development team are tasked with creating a coupled Monte Carlo (MC) neutronics and fluid flow simulation software application. Upon completion, the coupled application will satisfy following SMR challenge problems: 1) complete coupled MC neutronics/computational fluid dynamics (CFD) simulations for steady-state operation, 2) perform high fidelity transient and kinetic modeling for single state-points and startup conditions, and 3) perform transient coupled MC neutronics/CFD simulations of the low-flow natural circulation startup.
+
+Several highly optimized, high-resolution, physics applications have been under development for the last decade, the MC neutronics codes Shift and Open MC, and the CFD code Nek5000 are the codes of interest for ExaSMR team. In the coming investigation period, significant R\&D will need to be undergone to test the capabilities for coupling the three packages using a variety of different methods that will fulfill the goal of execution on exascale architecture \cite{ExaSMR}. 
+
+\subsection{Solution}
+Current ExaSMR work is dedicated to the generation and improvement of the numerics and models required for an efficient, fully-coupled, multiphysics application. Moving foreward, the next challenge in the application development phase is the process of selecting the coupling infrastructure components. The selection process is a tedious yet vital part of the application development which can heavily influence the investigation outcome. 
+
+The typical coupling infrastructure within large-scale applications typically contains specially tailored application program interfaces, drivers, communicators, and data transfer mechanisms which provides greater control over the application's performance. However, the trade-off for a custom coupling infrastructure is the large time investment required for developing the individual model evaluators for the specific application. One promising adjunct for reducing the amount specially-tailored coupling components is the Multiphysics Object-Oriented Simulation Environment (MOOSE).
+
+The primary advantage of creating a coupled multiphysics applications using the MOOSE-framework is the extensible system in place for the coupling of pre-existing physics applications \cite{moose}. MOOSE has shown great flexibility and power in a wide variety of coupled multiphysics applications, however, it is still unclear if MOOSE is a valid consideration for the coupled MC neutronics/fluid flow simulation software. This investigation aims to help in the evaluate the applicability of MOOSE in the coupled MC neutronics/fluid flow simulation software capability of Shift and MOOSE by performing a first-time coupling of Shift to MOOSE. This preliminary coupling of Shift and MOOSE will demonstrate the ability of Shift to be successfully coupled to MOOSE, perform accurate data transfers, and logical multiphysics calculations.  
+
+%The primary advantage of creating a coupled multiphysics applications using the MOOSE-framework is the extensible system in place for the coupling of pre-existing physics applications. Coupling using MOOSE is based on a top-down approach to multiphysics coupling, where one application has the ability to control and monitor the sub-applications coupled with it \cite{moose}. This coupling method is outlined below in Figure \ref{fig:mooseMulti}, which is a representation of the MOOSE coupling framework known as the MultiApp hierarchy. 
+%\begin{figure}[ht] 
+%	\centering
+%	\includegraphics[width=7cm]{MOOSE_MultiApp.jpg}
+%	\caption{Block diagram showing the design of a coupled MultiApp in the MOOSE Framework \cite{moose}.}
+%	\label{fig:mooseMulti}
+%\end{figure}
+
+%MOOSE has shown great flexibility and power in a wide variety of coupled multiphysics applications, however, it is still unclear if MOOSE is a valid consideration for the coupled MC neutronics/fluid flow simulation software. This investigation aims to help in the evaluate the applicability of MOOSE in the coupled MC neutronics/fluid flow simulation software capability of Shift and MOOSE by performing a first-time coupling of Shift to MOOSE. This preliminary coupling of Shift and MOOSE will demonstrate the ability of Shift to be successfully coupled to MOOSE, perform accurate data transfers, and logical multiphysics calculations.  
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Methodology}
+ 
+\subsection{Coupling Mechanics}
+The MultiApp and Transfer tools in the MOOSE framework are the basis for this coupling investigation, therefore, MOOSE was selected as the master-app, which will oversee application executions, variable management, and data transfers (see Figure \ref{fig:moooseMulti}). For this coupling, the MOOSE heat conduction module was used as the MOOSE-side physics application for providing feedback to Shift. The application was developed for transient simulations due to the downtime required between applications needed for data transfers between Shift and MOOSE. 
+
+A coupled simulation begins with the execution of Shift, which will be updated with the average system temperature prior to each execution. Upon completion of the given Shift execution, the volumetric heat generation profile is recorded in the tallies which are extracted, formatted and written to a separate CSV file. The data from Shift is then transferred to MOOSE for use in a heat conduction calculation.
+
+During the preliminary coupling, build errors were encountered while attempting to enable Shift building and execution calls directly from MOOSE. Because of this, Shift execution calls were removed from the MOOSE environment and moved to a script-based execution method. To call the $runShift$ script a new executioner was created, the $ShiftExecutioner$, which subclasses the transient MOOSE class. The method calls the runShift script by overriding the $PostSolve$ process of the transient class, which enables Shift execution to occur, without the initiation routines coming directly from MOOSE. 
+
+The $runShift$ script performs three main tasks for each Shift execution. Once called the first the scripts performs is a make-shift data transfer from MOOSE to Shift. The first process is a make-shift data transfer from Shift to MOOSE (described below). Following the transfer of the average temperature and update of the input file, a Shift MC calculation is executed. Upon completion of the Shift execution, the script ends by calling the extract\_tallies python script. The python script was developed to read the unformatted tallies output to the celltall.csv file, and then write the heat generation tallies to the makoTallies.csv file in a MOOSE-style CSV file.
+
+\subsection{Data Transfer}
+Data transfer between Shift and MOOSE is accomplished by two different methods; the first method transfers the average temperature of the system from MOOSE to Shift, and the second transfers the volumetric heat generation profile from Shift to MOOSE. As mentioned above the first transfer method is completed by the runShift script. The method for this transfer leverages the GNU $awk$ command to extract the system temperature from the MOOSE output file. To update the Shift model temperature, the script uses the GNU command $sed$. The $sed$ command uses a template file similar to the Shift KENO-VI geometry input file to determine the specific location to write the average temperature from MOOSE.  
+
+The second method for transferring data in the coupled application is a $MultiAppUserObjectTransfer$ type which will transition the heat generation profile from makoTallies.csv file to the MOOSE $AuxVariable$ heat. To perform this transfer the $VectorPostprocessor$ function in MOOSE is used, which behaves like a UserObject. The HeatProfileVectorPostprocessor (HPVP) class was created by subclasses the CSVReader MOOSE class to provide the methods for reading and assigning the values to the heat AuxVariable. 
+
+The process of transferring the heat generation profile to the heat AuxVariable begins with the HPVP $spatialValue$ method. The spatialValue method transposes a 2-D representation of a heat generation profile onto a 3-D mesh by using the libMesh quadrature points which are a mesh-based representation of the position in the finite element MOOSE mesh. SpatialValue loops over each quadrature point in the MOOSE mesh, determines the location of that quadrature point and what the value for the heat generation is at that location, and then saves that value to the heat AuxVariable at that quadrature point. 
+
+To relate the location of the quadrature point in MOOSE to the same location in the Shift geometry the getQuadratureLocation uses the Cartesian quadrature point location to determine quadrature's position with respect to the Shift model. This method contains a set of conditional statements which are developed based on the geometry of the Shift model and return the location of the quadrature point so spatialValue can assign that value to $heat$. 
+
+Based on the above, the high-level data flow for a given execution of the coupled MOOSE and Shift application is summarized in Figure \ref{fig:DataFlow} below.
+\begin{figure}[ht] 
+	\centering
+	\includegraphics[width=8.5cm]{CouplingMechanics.jpg}
+	\caption{Data flow for coupled application execution.}
+	\label{fig:DataFlow}
+\end{figure}
+
+\vspace*{-1em}\subsection{Testing}
+The testing platform was a 2.80 GHz 4-core system running Ubuntu 16.04 LTS. All simulations were run using one MPI processes; execution of the application on $n$ MPI processes (where $n$ > 1) generates $n$ instances of the runShift.sh script, causing an overload error for the MultiApp. No significant difference in the time to solution for MOOSE or Shift was experienced while executing on one MPI process. 
+
+The validation and verification for the preliminary coupling of Shift and MOOSE aims to demonstrate the capability of the coupled MultiApp to perform accurate data transfers and coupled multiphysics calculations. Therefore, the testing was completed with the intent of observing the response of the system due to variations model parameters opposed to selecting accurate system parameters for the purpose of benchmarking.
+
+\subsubsection{Physics}
+For this specific coupling iteration, the MOOSE heat conduction module solves the transient heat conduction equation given as:
+
+	\begin{equation}
+	\rho c_v \frac{\partial T}{\partial t} - k\nabla T - \dot{q} = 0
+	\label{eqn:conduction}
+	\end{equation} 
+	
+The specific Shift MC physics implementation used for testing is SCALE continuous-energy (SCE) solved using the ce\_v7.1\_.endf cross section library. All tests were executed in kcode mode with 8000 histories per cycle, 120 cycles, and 20 cycles skipped. The system geometry was modeled using KENO-VI geometry using a multi-cell encapsulating method with a pre-set distance between all sides of the cuboid in the x, y, and z directions in order to produce a volumetric heat generation profile. 
+
+To obtain a volumetric heat generation profile from Shift, the volumetric reaction rates (RR) for significant heat contributors (U-235, PU-238, PU-239, etc.) were tallied for each of the nested cells. To have Shift directly output the volumetric heat generation in each cell the RR was normalized using a method similar to the MCNP N4 tally normalization method. To produce a significant amount of heat such that the MOOSE heat conduction module would produce significantly noticeable differences, all models were normalized such that the total heat generation was equal to 100,000 watts. 
+
+\subsubsection{Model Descriptions}
+To test the capability of the coupled application, models were generated for Shift and MOOSE in their own native environment. The models were selected to be geometrically and dimensionally similar to avoid interpolation type data transfers and take more of a direct transfer method. Based of those factors, two models were selected from the International Handbook of Evaluated Criticality Safety Benchmark Experiments \cite{CritHandbook} which would be able to be produced in Shift and MOOSE native environments. 
+
+The first model was a mixed metal plutonium system (PU-COMP-MIXED-001, Case 1). The models for Shift and MOOSE were created based on the benchmarking data provided for system composition, physical properties, and system geometry. The model dimensions were: 30.78cm x 30.78cm x 20.99 cm with 1 cm separating the cells in the x and y directions, and 0.7 cm separations in the z-direction. The MOOSE model was generated using the $GeneratedMesh$ functionality with 48 mesh elements in each dimension. 
+
+To produce different results the second model was chosen to be a highly enriched uranium (HEU) model; however, the number of cuboid type systems was very limited or overly complicated. To keep the modeling simple, an adaptation of HEU-MET-FAST-001 (Godiva) was created using the same uranium content, but in a homogeneous graphite mixture with dimensions: 10 cm x 10 cm x 10 cm with 0.5 cm separating the cells in the x, y, and z directions. The MOOSE model was generated using the $GeneratedMesh$ functionality with 32 mesh elements in each dimension. 
+
+\subsubsection{Data Transfer Accuracy}
+To prove the accuracy of the data transfers from Shift to MOOSE three different methods of data logs for system variables were compared. For the system, the three data logs used were the formatted tallies output by the $ShiftExecutioner$, the MOOSE PostProcessor outputs at the end of each time step, and the VectorPostProcessor outputs at the end of each data transfer. The maximum volumetric heat production was used as the comparison variable because it is the only unchanging variable between the different logs.
+
+For all tests, a transient execution of the application was completed using 10-second transients and 10 total steps for both the plutonium and HEU models. By comparing the volumetric heat generation in cell one of the Shift output tallies, the maximum heat PP from the MOOSE outputs, and cell one of the VPP data transfer output it can be said with confidence that the data transfers are being performed accurately. 
+
+\subsubsection{Temperature Profile Response}
+To determine the ability of the coupled application to perform multiphysics calculations in response to changes in the model, the response of the temperature profile due to changes in the boundary conditions were compared. Three tests were performed for each model with three different arrangements of boundary conditions (BC's). Once completed, a peacock visualization of the simulation was inspected to see if the model is responding appropriately to the different BC's. 
+
+For this testing three arrangements of Dirichlet BC's were used, the first with no BC's, the second with a right and left only, and the third with left, right, front, and back. For all tests, a transient execution of the application was completed with 10-second transients and 20 steps with the Dirichlet BC's set to remain a constant 300.0 K (if any). Once completed, images of the final step in the transient peacock visualization were taken from a top view, and from a middle cross-section view for comparison and evaluation.  
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Results and Analysis}
+To evaluate the success of the data transfers from Shift to MOOSE the values coming from the three data logs must all be identical, if the values are different then accuracy is not confirmed. The value of the maximum heat generation at each step for each data log are shown in Table~\ref{tab:transfercheck}. In the table, the columns are labeled with the specific model followed by the method by which the data was obtained where $tally$ represents Shift output, $pp$ for PostProcessor, and $vpp$ for VectorPostProcessor.
+
+The values for the maximum volumetric heat production at the three different times are all identical for both the PU and HEU models. Therefore, it can be concluded that the method for data transfer from Shift to MOOSE is performing in an accurate manner
+
+The peacock visualizations for the PU and HEU model are provided in Figures \ref{fig:PU_Temp} and \ref{fig:HEU_Temp}. By visual inspection, both models outputs are in line with the results that would be expected based on the boundary conditions which were applied. 
+
+The visualizations of the models with no boundary conditions (a) have a spherical temperature profile, which logically shows that the greatest heat generation is in the middle cells and decreases moving outward. The visualizations with two boundary conditions (b) on parallel sides produce a symmetric temperature profile with the temperature increasing away from the BC's. And the visualization with four boundary conditions (c) on the side shows an increase in the temperature around the top and bottom due to the fact that the boundary conditions are forcing more heat transfer from the ends of the models. 
+
+Though tuning system response to changes in the input produces perspective based conclusion without quantitative backing, conclusions can be drawn from the basis that the application is behaving in a logical way. Based on the observations above, it can be said that though the multiphysics calculations are being performed accurately.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{table*}[ht]
+    \centering
+    \caption{Output volumetric heat generation from both models checked by three post-processors.}
+    \begin{tabular}{lllllllllllll}\toprule 
+ $Time (s)$ & & $PU\_tally$ & & $PU\_pp$  & & $PU\_vpp$  & & $HEU\_t$ & & $HEU\_pp$ & & $HEU\_vpp$ \\ [-0.25ex]
+\midrule
+ 10  &  & 2.167228  & & 2.167228  & & 2.167228  & & 15.3867988 & & 15.3867988 & & 15.3867988 \\ [-0.25ex]
+ 20  &  & 2.167228 &  & 2.167228  & & 2.167228  & & 15.3867988 & & 15.3867988 & & 15.3867988 \\ [-0.25ex]
+ 30  & & 2.15667784 & & 2.15667784 & & 2.15667784 & & 15.3867988 & & 15.3867988 & & 15.3867988 \\ [-0.25ex]
+ 40  &  & 2.18991985 & & 2.18991985 & & 2.18991985 & & 15.3454819 & & 15.3454819 & & 15.3454819 \\ [-0.25ex]
+ 50  &  & 2.18618069 & & 2.18618069 & & 2.18618069 & & 15.560902  & & 15.560902  & & 15.560902 \\[-0.25ex]
+ 60  &  & 2.22374468 & & 2.22374468 & & 2.22374468 & & 15.3804787 & & 15.3804787 & & 15.3804787 \\ [-0.25ex]
+ 70  &  & 2.1792809  & & 2.1792809  & & 2.1792809  & & 15.8091341 & & 15.8091341 & & 15.8091341 \\ [-0.25ex]
+ 80  &  & 2.15896775 & & 2.15896775 & & 2.15896775 & & 15.4547659 & & 15.4547659 & & 15.4547659 \\ [-0.25ex]
+ 90  &  & 2.14869204 & & 2.14869204 & & 2.14869204 & & 15.3661882 & & 15.3661882 & & 15.3661882\\ [-0.25ex]
+ 100 &  & 2.24681013 & & 2.24681013 & & 2.24681013 & & 15.2320755 & & 15.2320755 & & 15.2320755 \\ [-0.25ex]
+\bottomrule
+	\end{tabular}
+  \label{tab:transfercheck}
+\end{table*}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{figure}[ht] 
+	\centering
+	\vspace*{-1em}\includegraphics[width=1.75cm]{PUB0top.png}
+	\enskip \includegraphics[width=3cm]{PUB0mid.png}\vspace*{-0.15cm}
+	
+	\raggedright	
+	\quad \subfloat{\small \textit{(a) No boundary conditions.}} \\
+	
+	\centering
+	\includegraphics[width=1.75cm]{PUB2top.png}
+	\enskip \includegraphics[width=3cm]{PUB2mid.png}\vspace*{-0.15cm}
+	
+	\raggedright
+	\quad  \subfloat{\small\textit{(b) Left and right boundary conditions.}} 
+	
+	\centering
+	\includegraphics[width=1.75cm]{PUB4top.png}
+	\enskip \includegraphics[width=3cm]{PUB4mid.png} \vspace*{-0.15cm}
+	
+	\raggedright
+	\quad \subfloat{\small\textit{(c) Left,right,back and front boundary conditions.}} \\
+	
+	\vspace*{0.15cm} \caption{Plutonium block temperature profile response to different boundary conditions (left: top view,  right: middle cross-section).}
+	\label{fig:PU_Temp}	
+\end{figure}
+
+\begin{figure}[ht] 
+	\centering
+	\vspace*{-1em}\includegraphics[width=1.5cm]{HEU0top.png}
+	\enskip \includegraphics[width=3cm]{HEU0mid.png}\vspace*{-0.2cm}
+		
+	\raggedright	
+	\quad \subfloat{\small \textit{(a) No boundary conditions.}} \\
+	
+	\centering
+	\includegraphics[width=1.5cm]{HEU2top.png}
+	\enskip \includegraphics[width=3cm]{HEU2mid.png}\vspace*{-0.2cm}
+	
+	\raggedright
+	\quad  \subfloat{\small\textit{(b) Left and right boundary conditions.}} 
+	
+	\centering
+	\includegraphics[width=1.5cm]{HEU4top.png}
+	\enskip \includegraphics[width=3cm]{HEU4mid.png}\vspace*{-0.15cm}
+	
+	\raggedright
+	\quad \subfloat{\small\textit{(c) Left,right,back and front boundary conditions.}} \\
+	
+	\vspace*{0.15cm} \caption{Uranium block temperature profile response to different boundary conditions (left: top view,  right: middle cross-section).}
+	\label{fig:HEU_Temp}	
+\end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Conclusions}
+MOOSE is a very powerful tool for application in creating coupled multiphysics applications. MOOSE offers many of the drivers, data transfer methods, and infrastructure which are normally not included in one singular location, which makes MOOSE a convenient method for coupling two existing physics software packages. 
+
+Some difficulties were experienced in the coupling process; however, the benefit of the sheer amount of tools offered in the MOOSE framework is that for any-one thing there are multiple ways to accomplish that task.
+
+The coupling of Shift and MOOSE successfully satisfies the three goals of this investigation. 1) Shift was successfully coupled to MOOSE, 2) data transfers between Shift and MOOSE are performing accurately, and 3) the response of the outputs due to changes in the system inputs shows the ability of the application to perform multiphysics calculations. 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Acknowledgments}
+
+This research was supported by the Exascale Computing Project (17-SC-20-SC), a collaborative effort of two U.S. Department of Energy organizations (Office of Science and the National Nuclear Security Administration) responsible for the planning and preparation of a capable exascale ecosystem, including software, applications, hardware, advanced system engineering, and early test bed platforms, in support of the nation's exascale computing imperative.
+
+Additionally, the author would like to thank the MOOSE and Exnihilo teams, and Brycen Wendt for their availability and guidance through the application development process.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\appendix
+\section{Data}
+The source code described herein is accessible on GitHub at WackStev/mako. The basic application is available on the master branch, and the PU and HEU testing suites are available on the ANS\_2017 branch. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\bibliographystyle{ans}
+\bibliography{bibliography}
+\end{document}
+
